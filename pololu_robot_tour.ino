@@ -13,10 +13,10 @@ ButtonA buttonA;
 // R = right
 // L = left
 // T = stop
-char paths[] = "SFFT"
+char paths[] = "SFRFLBLT";
 int index = 0;
 float targetTime = 30.0;
-float baseSpeed = 50.0;
+float baseSpeed = 100.0;
 
 //angle pid
 float kp = 0.01;
@@ -43,20 +43,25 @@ const float countsPerTurn = wheelDistance * 3.14159 / 4 / cmPerCount;
 
 int16_t countsLeft = 0;
 int16_t countsRight = 0;
+int16_t countsLeftOffset = 0;
+int16_t countsRightOffset = 0;
+volatile int totalCount = 0;
 
 
 void setup() {
+  Serial.begin(9600);
   // put your setup code here, to run once:
   maxCounts = countsPerForward/2; // start
   for (int x = 0; x<strlen(paths); x++){
-    if (paths[x]=="F" || paths[x]=="B"){
+    if (paths[x]=='F' || paths[x]=='B'){
       maxCounts += countsPerForward;
-    } else if (paths[x]=="L" || paths[x]=="R"){
+    } else if (paths[x]=='L' || paths[x]=='R'){
       maxCounts += countsPerTurn;
     }
   }
   startTime = millis();
-
+  Serial.println("HII");
+  delay(1000);
 }
 
 void moveForward() {
@@ -80,66 +85,89 @@ void stop() {
 }
 
 void adjustSpeeds() {
-  countsLeft = encoders.getCountsLeft();
-  countsRight = encoders.getCountsRight();
+  // countsLeft = encoders.getCountsLeft();
+  // countsRight = encoders.getCountsRight();
   error = abs(countsLeft) - abs(countsRight);
-  errorTime = (total_encoder_count + max(abs(encoderA_count), abs(encoderB_count)))/(float)maxCounts*targetTime*1000 - (millis()-startTime);
+  errorTime = (totalCount + max(abs(countsLeft), abs(countsRight)))/(float)maxCounts*targetTime*1000 - (millis()-startTime);
   // float adj_time = constrain(1 - kpTime*errorTime, 0.1, 2);
   float adj_time = 1;
-  leftSpeed = constrain(adj_time*(baseSpeed - kp*error), 0, 400);
-  rightSpeed = constrain(adj_time*(baseSpeed + kp*error), 0, 400);
+  Serial.print(" state ");
+  Serial.print(index);
+  Serial.print(" counts left ");
+  Serial.print(countsLeft);
+  Serial.print(" countsPerForward ");
+  Serial.print(countsPerForward);
+  Serial.print(" counts right ");
+  Serial.println(countsRight);
+  // leftSpeed = constrain(adj_time*(baseSpeed - kp*error), 0, 400);
+  // rightSpeed = constrain(adj_time*(baseSpeed + kp*error), 0, 400);
+  // leftSpeed = 
 
 }
 
 void loop() {
-  if (paths[index]="S"){
-    countsLeft = encoders.getCountsLeft();
-    countsRight = encoders.getCountsRight();
+    countsLeft = encoders.getCountsLeft() + countsLeftOffset;
+    countsRight = encoders.getCountsRight() + countsRightOffset;
+
+  if (paths[index]=='S'){
     if (max(abs(countsLeft), abs(countsRight))>countsPerForward/2){
+      Serial.println("hiii");
+      Serial.println(countsLeftOffset);
+
+      totalCount += (int16_t)countsPerForward/2;
+      countsLeftOffset -= (int16_t)countsPerForward/2;
+      countsRightOffset -= (int16_t)countsPerForward/2;
       index++;
-      total_encoder_count += countsPerForward/2;
-      countsLeft -= countsPerForward/2;
-      countsRight -= countsPerForward/2;
+
     }
     adjustSpeeds();
     moveForward();
-  }else if (paths[index]="F"){
-    countsLeft = encoders.getCountsLeft();
-    countsRight = encoders.getCountsRight();
+  }else if (paths[index]=='F'){
     if (max(abs(countsLeft), abs(countsRight))>countsPerForward){
+      Serial.println("hiii");
+      Serial.println(countsLeftOffset);
+      totalCount += (int16_t)countsPerForward;
+      countsLeftOffset -= (int16_t)countsPerForward;
+      countsRightOffset -= (int16_t)countsPerForward;
       index++;
-      total_encoder_count += countsPerForward;
-      countsLeft -= countsPerForward;
-      countsRight -= countsPerForward;
+
     }
     adjustSpeeds();
     moveForward();
-  }else if (paths[index]="B"){
-    countsLeft = encoders.getCountsLeft();
-    countsRight = encoders.getCountsRight();
+  }else if (paths[index]=='B'){
     if (max(abs(countsLeft), abs(countsRight))>countsPerForward){
+      Serial.println("hiii");
+      Serial.println(countsLeftOffset);
+      totalCount += (int16_t)countsPerForward;
+      countsLeftOffset += (int16_t)countsPerForward;
+      countsRightOffset += (int16_t)countsPerForward;
       index++;
-      total_encoder_count += countsPerForward;
-      countsLeft += countsPerForward;
-      countsRight += countsPerForward;
+
     }
     adjustSpeeds();
     moveBackward();
-  }else if (paths[index] == "R"){
+  }else if (paths[index] == 'R'){
     if (max(abs(countsLeft), abs(countsRight))>countsPerTurn){
+      Serial.println("hiii");
+      Serial.println(countsLeftOffset);
+      totalCount += (int16_t)countsPerTurn;
+      countsLeftOffset -= (int16_t)countsPerTurn;
+      countsRightOffset += (int16_t)countsPerTurn;
       index++;
-      total_encoder_count += countsPerTurn;
-      countsLeft -= countsPerTurn;
-      countsRight += countsPerTurn;
+
     }
     adjustSpeeds();
     turnRight();
-  }else if (paths[index] == "L"){
+  }else if (paths[index] == 'L'){
     if (max(abs(countsLeft), abs(countsRight))>countsPerTurn){
+
+      Serial.println("hiii");
+      Serial.println(countsLeftOffset);
+      totalCount += (int16_t)countsPerTurn;
+      countsLeftOffset += (int16_t)countsPerTurn;
+      countsRightOffset -= (int16_t)countsPerTurn;
       index++;
-      total_encoder_count += countsPerTurn;
-      countsLeft += countsPerTurn;
-      countsRight -= countsPerTurn;
+
     }
     adjustSpeeds();
     turnLeft();
