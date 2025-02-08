@@ -12,14 +12,17 @@ ButtonA buttonA;
 // B = backward
 // R = right
 // L = left
-// T = stop
-char paths[] = "SFRFLBLT";
+// T = stop/terminate
+char paths[] = "SRRRRRRRRRRRRRRRRT";
+bool timeAdj = true;
+bool encoderAdj = true;
+// char paths[] = "S";
 int index = 0;
-float targetTime = 30.0;
+float targetTime = 5.0;
 float baseSpeed = 100.0;
 
 //angle pid
-float kp = 0.01;
+float kp = 1;
 float error = 0.0;
 float leftSpeed = baseSpeed;
 float rightSpeed = baseSpeed;
@@ -28,16 +31,16 @@ float maxSpeed = 255.0;
 
 //adjust time PID
 int maxCounts = 0;
-float kpTime = 0.001;
+float kpTime = 0.0005;
 long errorTime = 0.0;
 long startTime = 0.0;
 
 // distances
 const float wheelDiameter = 3.2; // cm
-const float wheelDistance = 9.25; // distance between wheels
+const float wheelDistance = 8.65; // distance between wheels
 const float countsPerRevolution = 358.32; // Encoder counts per wheel revolution
 
-const float cmPerCount = (wheelDiameter * 3.14159) / countsPerRevolution;
+const float cmPerCount = (wheelDiameter * 3.14159) / countsPerRevolution * 27/25 * 71.5/75;
 const float countsPerForward = 50 / cmPerCount;
 const float countsPerTurn = wheelDistance * 3.14159 / 4 / cmPerCount;
 
@@ -59,9 +62,16 @@ void setup() {
       maxCounts += countsPerTurn;
     }
   }
-  startTime = millis();
   Serial.println("HII");
+  if (!timeAdj){
+    kpTime = 0.0;
+  }
+  if (!encoderAdj){
+    kp = 0.0;
+  }
   delay(1000);
+  startTime = millis();
+
 }
 
 void moveForward() {
@@ -89,8 +99,8 @@ void adjustSpeeds() {
   // countsRight = encoders.getCountsRight();
   error = abs(countsLeft) - abs(countsRight);
   errorTime = (totalCount + max(abs(countsLeft), abs(countsRight)))/(float)maxCounts*targetTime*1000 - (millis()-startTime);
-  // float adj_time = constrain(1 - kpTime*errorTime, 0.1, 2);
-  float adj_time = 1;
+  float adj_time = constrain(1 - kpTime*errorTime, 0.1, 2);
+  // float adj_time = 1;
   Serial.print(" state ");
   Serial.print(index);
   Serial.print(" counts left ");
@@ -98,9 +108,18 @@ void adjustSpeeds() {
   Serial.print(" countsPerForward ");
   Serial.print(countsPerForward);
   Serial.print(" counts right ");
-  Serial.println(countsRight);
-  // leftSpeed = constrain(adj_time*(baseSpeed - kp*error), 0, 400);
-  // rightSpeed = constrain(adj_time*(baseSpeed + kp*error), 0, 400);
+  Serial.print(countsRight);
+  Serial.print(" error correction ");
+  Serial.print(kp*error);
+  Serial.print(" error time correction ");
+  Serial.print(1 - kpTime*errorTime);
+  leftSpeed = constrain(adj_time*(baseSpeed - kp*error), minSpeed, maxSpeed);
+  rightSpeed = constrain(adj_time*(baseSpeed + kp*error), minSpeed, maxSpeed);
+  Serial.print(" left speed ");
+  Serial.print(leftSpeed);
+  Serial.print(" right speed ");
+  Serial.println(rightSpeed);
+
   // leftSpeed = 
 
 }
