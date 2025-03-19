@@ -97,7 +97,7 @@ void stop() {
 }
 
 void adjustSpeeds() {
-  error = abs(countsLeft) - abs(countsRight);
+  error = countsLeftDist - countsRightDist;
   errorTime = (totalCount + actionDist)/(float)maxCounts*targetTime*1000 - (millis()-startTime);
   float adj_time = constrain(1 - kpTime*errorTime, 0.1, 2);
   // float adj_time = 1;
