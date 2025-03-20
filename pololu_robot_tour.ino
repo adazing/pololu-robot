@@ -52,9 +52,6 @@ int16_t actionDist = 0;
 int16_t countsLeftOffset = 0;
 int16_t countsRightOffset = 0;
 volatile int totalCount = 0;
-volatile int targetActionCount = 0;
-
-float time_accel_prop = 0.2; // proportion of action spent accelerating and descelerating
 
 // int16_t accelDiff = 50; // speed diff between slow and medium and medium and high
 
@@ -62,7 +59,7 @@ void setup() {
   Serial.begin(9600);
   // calculate max counts  
   for (int x = 0; x<strlen(paths); x++){
-    if (paths[x]=="S"){
+    if (paths[x]=='S'){
       maxCounts += countsPerForward/2;
     }else if (paths[x]=='F' || paths[x]=='B'){
       maxCounts += countsPerForward;
