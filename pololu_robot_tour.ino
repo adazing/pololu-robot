@@ -13,31 +13,29 @@ ButtonA buttonA;
 // R = right
 // L = left
 // T = stop/terminate
-char paths[] = "FFFFFRRRRT";
+char paths[] = "FLFLFLFLFLFLFLFLT";
 bool timeAdj = true;
 bool encoderAdj = true;
 // char paths[] = "S";
 int index = 0;
-float targetTime = 10.0;
+float targetTime = 1.0;
+float baseSpeed = 100.0;
+
+float actionDelay = 0.5;
 
 //angle pid
-float kp = 5;
+float kp = 1;
 float error = 0.0;
-float minSpeed = 30.0;
-float maxSpeed = 255.0;
-float baseSpeed = minSpeed;
 float leftSpeed = baseSpeed;
 float rightSpeed = baseSpeed;
-
+float minSpeed = 15.0;
+float maxSpeed = 150.0;
 
 //adjust time PID
 int maxCounts = 0;
-float kpTime = 0.03;
+float kpTime = 0.0005;
 long errorTime = 0.0;
 long startTime = 0.0;
-// float timeOffset = 0;
-long startActionTime = 0.0;
-bool startedAction = true;
 
 // distances
 const float wheelDiameter = 3.2; // cm
@@ -46,7 +44,7 @@ const float countsPerRevolution = 358.32; // Encoder counts per wheel revolution
 
 const float cmPerCount = (wheelDiameter * 3.14159) / countsPerRevolution * 27/25 * 71.5/75;
 const float countsPerForward = 50 / cmPerCount;
-const float countsPerTurn = wheelDistance * 3.14159 / 4 / cmPerCount;
+const float countsPerTurn = wheelDistance * 3.14159 / 4 / cmPerCount+1;
 
 int16_t countsLeft = 0;
 int16_t countsRight = 0;
@@ -56,19 +54,11 @@ int16_t actionDist = 0;
 int16_t countsLeftOffset = 0;
 int16_t countsRightOffset = 0;
 volatile int totalCount = 0;
-volatile int targetActionCount = 0;
-float targetActionTime = 0;
-float timeAccelProp = 0.2; // proportion of action spent accelerating and descelerating
 
-// acceleration math
-float kAccel = 0.0007;
-float VM = 0.0;
-
-// int16_t accelDiff = 50; // speed diff between slow and medium and medium and high
 
 void setup() {
   Serial.begin(9600);
-  // calculate max counts  
+  // calculate max counts
   for (int x = 0; x<strlen(paths); x++){
     if (paths[x]=='S'){
       maxCounts += countsPerForward/2;
@@ -78,70 +68,33 @@ void setup() {
       maxCounts += countsPerTurn;
     }
   }
+  targetTime -= (strlen(paths)-2)*actionDelay;
   if (!timeAdj){
     kpTime = 0.0;
   }
   if (!encoderAdj){
     kp = 0.0;
   }
-  delay(5000);
+  delay(1000);
   startTime = millis();
-  Serial.println("hi");
-}
-
-void calcVM(){
-    if (pow(targetActionTime, 2)<4*kAccel*targetActionCount){
-    VM = targetActionTime/(2*kAccel);
-    Serial.print("vm ");
-    Serial.println(targetActionTime, 6);
-    Serial.println(2*kAccel, 6);
-    Serial.println("cry1");
-  }else{
-    VM = (targetActionTime - sqrt(pow(targetActionTime, 2) - 4*kAccel*targetActionCount))/(2*kAccel);
-  }
-  if (2*kAccel*VM > targetActionTime){ // fallback --> cry and cry and cry omfg what the heck is happening
-    Serial.print("vm ");
-    Serial.println(VM);
-    Serial.println("cry2");
-    VM = targetActionTime/(2*kAccel);
-  }
 }
 
 void adjustSpeeds() {
   error = countsLeftDist - countsRightDist;
-  float pred_ticks = 0.0;
-  float time_since_action_started = ((float)millis()-(float)startActionTime)/1000.0;
-  // Serial.println(kAccel*VM);
-  // Serial.println(time_since_action_started);
-  // Serial.println(1/kAccel);
-  // Serial.println(startActionTime);
-  if (time_since_action_started<kAccel*VM){
-    Serial.println(1);
-    pred_ticks = (1/kAccel)*pow(time_since_action_started, 2)/2;
-  }else if (time_since_action_started<targetActionTime-kAccel*VM){
-    Serial.println(2);
-    pred_ticks = VM*kAccel*VM/2+VM*(time_since_action_started-VM*kAccel);
-  }else{
-    Serial.println(3);
-    pred_ticks = VM*kAccel*VM/2+(targetActionTime - 2*VM*kAccel)*VM + 1/kAccel*pow(time_since_action_started-(targetActionTime - kAccel*VM), 2)/2 + VM*(time_since_action_started - (targetActionTime - kAccel*VM));
-  }
-    Serial.print(leftSpeed);
-    Serial.print(" | ");
-    Serial.println(rightSpeed);
-  // Serial.println(VM, 6);
-  // Serial.println(kAccel, 6);
-  // Serial.println(time_since_action_started, 6);
-  // Serial.println(targetActionTime,6);
-  // Serial.println(pow(time_since_action_started, 2)/2, 6);
-  Serial.print(pred_ticks, 6);
-  Serial.print(" ");
-  Serial.println(actionDist, 6);
-  errorTime = actionDist - pred_ticks;
-  // errorTime = (totalCount + actionDist)/(float)maxCounts*targetTime*1000 - (millis()-startTime);
+  errorTime = (totalCount + actionDist)/(float)maxCounts*targetTime*1000 - (millis()-startTime-index*actionDelay*1000);
+  
+  // Serial.println(millis()-startTime-index*actionDelay);
   float adj_time = constrain(1 - kpTime*errorTime, 0.1, 2);
-  // Serial.println(adj_time);
-  leftSpeed = constrain(adj_time*(baseSpeed) - kp*error, minSpeed, maxSpeed);
-  rightSpeed = constrain(adj_time*(baseSpeed) + kp*error, minSpeed, maxSpeed);
+  leftSpeed = constrain(adj_time*(baseSpeed - kp*error), minSpeed, maxSpeed);
+  rightSpeed = constrain(adj_time*(baseSpeed + kp*error), minSpeed, maxSpeed);
+}
+
+void finishDelay() {
+  motors.setSpeeds(0, 0);
+  long startDelayTime = millis();
+  while (millis()-startDelayTime<actionDelay*1000){
+    delay(10);
+  }
 }
 
 void loop() {
@@ -152,25 +105,14 @@ void loop() {
     countsLeftDist = countsLeft;
     countsRightDist = countsRight;
     actionDist = max(countsLeftDist, countsRightDist);
-    targetActionCount = countsPerForward/2;
-    // targetActionTime = ((startTime + targetTime*1000)-startActionTime)*(float)targetActionCount/((float)maxCounts-(float)totalCount)/1000.0;
-    // targetActionTime = targetTime * (float)targetActionCount/(float)maxCounts;
+    if (actionDist > countsPerForward/2){
 
-    if (startedAction){
-      // Serial.println("gdbsfberahtbghnrwghknjrwerngfhkrwoprgtjknr3portnhjgkrtokghjkrweopkgfjnr3eokrgntjkhrko3ngh");
-      startActionTime = millis();
-      targetActionTime = ((startTime + targetTime*1000)-startActionTime)*(float)targetActionCount/((float)maxCounts-(float)totalCount)/1000.0;
-      startedAction = false;
-      calcVM();
-    }
-
-    if (actionDist > targetActionCount){
-      // timeOffset += targetActionTime - ((float)millis()-(float)startActionTime)/1000.0;
-      totalCount += (int16_t)targetActionCount;
-      countsLeftOffset -= (int16_t)targetActionCount;
-      countsRightOffset -= (int16_t)targetActionCount;
+      totalCount += (int16_t)countsPerForward/2;
+      countsLeftOffset -= (int16_t)countsPerForward/2;
+      countsRightOffset -= (int16_t)countsPerForward/2;
+      finishDelay();
       index++;
-      startedAction = true;
+
     }
     adjustSpeeds();
     motors.setSpeeds(leftSpeed, rightSpeed);
@@ -178,28 +120,13 @@ void loop() {
     countsLeftDist = countsLeft;
     countsRightDist = countsRight;
     actionDist = max(countsLeftDist, countsRightDist);
-    Serial.print(actionDist);
-    Serial.print(" / ");
-    Serial.println(targetActionCount);
+    if (actionDist>countsPerForward){
+      totalCount += (int16_t)countsPerForward;
+      countsLeftOffset -= (int16_t)countsPerForward;
+      countsRightOffset -= (int16_t)countsPerForward;
+      finishDelay();
 
-    targetActionCount = countsPerForward;
-    // targetActionTime = targetTime * (float)targetActionCount/(float)maxCounts;
-    if (startedAction){
-      startActionTime = millis();
-      targetActionTime = ((startTime + targetTime*1000)-startActionTime)*(float)targetActionCount/((float)maxCounts-(float)totalCount)/1000.0;
-      startedAction = false;
-      // Serial.println("gdbsfberahtbghnrwghknjrwerngfhkrwoprgtjknr3portnhjgkrtokghjkrweopkgfjnr3eokrgntjkhrko3ngh");
-
-      calcVM();
-    }
-
-    if (actionDist>targetActionCount){
-      Serial.println("end");
-      totalCount += (int16_t)targetActionCount;
-      countsLeftOffset -= (int16_t)targetActionCount;
-      countsRightOffset -= (int16_t)targetActionCount;
       index++;
-      startedAction = true;
     }
     adjustSpeeds();
     motors.setSpeeds(leftSpeed, rightSpeed);
@@ -207,20 +134,12 @@ void loop() {
     countsLeftDist = -countsLeft;
     countsRightDist = -countsRight;
     actionDist = max(countsLeftDist, countsRightDist);
-    targetActionCount = countsPerForward;
-    // targetActionTime = targetTime * (float)targetActionCount/(float)maxCounts;
-    if (startedAction){
-      startActionTime = millis();
-      targetActionTime = ((startTime + targetTime*1000)-startActionTime)*(float)targetActionCount/((float)maxCounts-(float)totalCount)/1000.0;
-      startedAction = false;
-      calcVM();
-    }
-    if (actionDist>targetActionCount){
-      totalCount += (int16_t)targetActionCount;
-      countsLeftOffset += (int16_t)targetActionCount;
-      countsRightOffset += (int16_t)targetActionCount;
+    if (actionDist>countsPerForward){
+      totalCount += (int16_t)countsPerForward;
+      countsLeftOffset += (int16_t)countsPerForward;
+      countsRightOffset += (int16_t)countsPerForward;
+      finishDelay();
       index++;
-      startedAction = true;
     }
     adjustSpeeds();
     motors.setSpeeds(-leftSpeed, -rightSpeed);
@@ -228,20 +147,14 @@ void loop() {
     countsLeftDist = countsLeft;
     countsRightDist = -countsRight;
     actionDist = max(countsLeftDist, countsRightDist);
-    targetActionCount = countsPerTurn;
-    // targetActionTime = targetTime * (float)targetActionCount/(float)maxCounts;
-    if (startedAction){
-      startActionTime = millis();
-      targetActionTime = ((startTime + targetTime*1000)-startActionTime)*(float)targetActionCount/((float)maxCounts-(float)totalCount)/1000.0;
-      startedAction = false;
-      calcVM();
-    }
-    if (actionDist>targetActionCount){
-      totalCount += (int16_t)targetActionCount;
-      countsLeftOffset -= (int16_t)targetActionCount;
-      countsRightOffset += (int16_t)targetActionCount;
+    if (actionDist>countsPerTurn){
+      // Serial.println("hiii");
+      // Serial.println(countsLeftOffset);
+      totalCount += (int16_t)countsPerTurn;
+      countsLeftOffset -= (int16_t)countsPerTurn;
+      countsRightOffset += (int16_t)countsPerTurn;
+      finishDelay();
       index++;
-      startedAction = true;
     }
     adjustSpeeds();
     motors.setSpeeds(leftSpeed, -rightSpeed);
@@ -249,25 +162,19 @@ void loop() {
     countsLeftDist = -countsLeft;
     countsRightDist = countsRight;
     actionDist = max(countsLeftDist, countsRightDist);
-    targetActionCount = countsPerTurn;
-    // targetActionTime = targetTime * (float)targetActionCount/(float)maxCounts;
-    if (startedAction){
-      startActionTime = millis();
-      targetActionTime = ((startTime + targetTime*1000)-startActionTime)*(float)targetActionCount/((float)maxCounts-(float)totalCount)/1000.0;
-      startedAction = false;
-      calcVM();
-    }
-    if (actionDist>targetActionCount){
+    if (actionDist>countsPerTurn){
 
-      totalCount += (int16_t)targetActionCount;
-      countsLeftOffset += (int16_t)targetActionCount;
-      countsRightOffset -= (int16_t)targetActionCount;
+      // Serial.println("hiii");
+      // Serial.println(countsLeftOffset);
+      totalCount += (int16_t)countsPerTurn;
+      countsLeftOffset += (int16_t)countsPerTurn;
+      countsRightOffset -= (int16_t)countsPerTurn;
+      finishDelay();
       index++;
-      startedAction = true;
 
     }
     adjustSpeeds();
-    motors.setSpeeds(-leftSpeed, rightSpeed);
+  motors.setSpeeds(-leftSpeed, rightSpeed);
   } else{ // T
     motors.setSpeeds(0, 0);
     while(true){
